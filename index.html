@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en" class="h-full overflow-hidden">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>CYBER SURGE: ARMORY</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background-color: #020204;
+      color: white;
+      font-family: 'Rajdhani', sans-serif;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+    }
+
+    /* CRT Scanlines */
+    .scanlines {
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+      background-size: 100% 3px, 3px 100%;
+      pointer-events: none;
+    }
+
+    /* Power Up Indicators in HUD */
+    .pup-indicator {
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .pup-active {
+      filter: drop-shadow(0 0 8px currentColor);
+      transform: scale(1.1);
+    }
+
+    /* UI Overlays */
+    .glass-panel {
+      background: rgba(10, 15, 30, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(0, 255, 255, 0.2);
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Canvas -->
+  <canvas id="gameCanvas" class="block absolute inset-0 z-0"></canvas>
+
+  <!-- CRT Overlay -->
+  <div class="absolute inset-0 z-10 scanlines opacity-20 pointer-events-none"></div>
+
+  <!-- UI HUD -->
+  <div id="uiLayer" class="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-6">
+    
+    <!-- Top HUD -->
+    <div class="flex justify-between items-start">
+      <!-- Score -->
+      <div class="glass-panel px-6 py-3 rounded-br-2xl border-l-4 border-l-[#00f5d4]">
+        <p class="text-[10px] text-gray-400 tracking-[0.3em] uppercase">Score</p>
+        <h2 id="scoreDisplay" class="text-4xl font-orbitron font-bold text-white tracking-widest drop-shadow-[0_0_10px_rgba(0,245,212,0.8)]">0</h2>
+      </div>
+
+      <!-- Active Powerups Status -->
+      <div class="flex gap-2 p-2 rounded-full bg-black/50 border border-white/10 backdrop-blur-md">
+        <div id="icon-spread" class="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-cyan-400 pup-indicator" title="Tri-Beam">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+        </div>
+        <div id="icon-shield" class="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-yellow-400 pup-indicator" title="Aegis Shield">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        </div>
+        <div id="icon-time" class="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-white pup-indicator" title="Chrono Shift">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div id="icon-magnet" class="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-purple-400 pup-indicator" title="Gravity Well">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+        </div>
+        <div id="icon-nuke" class="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-red-500 pup-indicator" title="Thermal Nuc (HOLD)">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Start / Game Over Menu -->
+    <div id="menuScreen" class="absolute inset-0 flex items-center justify-center pointer-events-auto bg-black/90 backdrop-blur-xl z-50 transition-opacity duration-500">
+      <div class="text-center max-w-lg">
+        <h1 class="text-7xl md:text-9xl font-orbitron font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00f5d4] via-[#7b61ff] to-[#ff0055] mb-2 tracking-tighter drop-shadow-[0_0_30px_rgba(123,97,255,0.5)]">ARMORY</h1>
+        <p class="text-xl text-[#7b61ff] tracking-[0.5em] mb-10 font-bold uppercase">System Online</p>
+
+        <!-- Power Up Legend -->
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-10 text-xs font-mono text-gray-400 bg-white/5 p-4 rounded-xl border border-white/10">
+          <div class="text-cyan-400 border-b border-cyan-400/30 pb-1">TRI-BEAM (Cyan)</div>
+          <div class="text-yellow-400 border-b border-yellow-400/30 pb-1">SHIELD (Gold)</div>
+          <div class="text-white border-b border-white/30 pb-1">SLOW-MO (White)</div>
+          <div class="text-purple-400 border-b border-purple-400/30 pb-1">MAGNET (Purple)</div>
+          <div class="text-red-500 border-b border-red-500/30 pb-1">NUKE (Red)</div>
+        </div>
+
+        <button id="startBtn" class="group relative px-10 py-4 bg-[#00f5d4] text-black font-black text-xl tracking-widest clip-path-slant hover:bg-white transition-colors duration-200">
+          <span class="relative z-10">ENGAGE</span>
+          <div class="absolute inset-0 bg-white transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-200 z-0 mix-blend-difference"></div>
+        </button>
+        
+        <div class="mt-6 grid grid-cols-2 gap-4 text-gray-500 text-xs">
+            <div class="border border-gray-800 p-2 rounded">
+                <span class="text-[#00f5d4] font-bold">MOUSE</span> TO MOVE
+            </div>
+            <div class="border border-gray-800 p-2 rounded">
+                <span class="text-[#7b61ff] font-bold">WASD / ARROWS</span> TO MOVE
+            </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- AUDIO ENGINE (Procedural) ---
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioCtx();
+
+    const Sound = {
+      play(type) {
+        if (ctx.state === 'suspended') ctx.resume();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        const now = ctx.currentTime;
+        
+        if (type === 'shoot') {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(800, now);
+          osc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
+          gain.gain.setValueAtTime(0.05, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+          osc.start(now);
+          osc.stop(now + 0.1);
+        } else if (type === 'explosion') {
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(100, now);
+          osc.frequency.exponentialRampToValueAtTime(0.01, now + 0.3);
+          gain.gain.setValueAtTime(0.1, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+          osc.start(now);
+          osc.stop(now + 0.3);
+        } else if (type === 'powerup') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(440, now);
+          osc.frequency.linearRampToValueAtTime(880, now + 0.1);
+          osc.frequency.linearRampToValueAtTime(1760, now + 0.3);
+          gain.gain.setValueAtTime(0.05, now);
+          gain.gain.linearRampToValueAtTime(0, now + 0.5);
+          osc.start(now);
+          osc.stop(now + 0.5);
+        } else if (type === 'nuke') {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(50, now);
+          osc.frequency.linearRampToValueAtTime(10, now + 1.5);
+          gain.gain.setValueAtTime(0.3, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+          osc.start(now);
+          osc.stop(now + 1.5);
+        }
+      }
+    };
+
+    // --- GAME ENGINE ---
+    const canvas = document.getElementById('gameCanvas');
+    const c = canvas.getContext('2d'); // REMOVED { alpha: false } to fix glow rendering
+    
+    // Resize Handling
+    let width, height;
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // State
+    let gameRunning = false;
+    let score = 0;
+    let frames = 0;
+    let mouse = { x: width/2, y: height/2 };
+    
+    // Keyboard State
+    const keys = {};
+
+    // Power Up Timers/Flags
+    const powerups = {
+      spread: 0,
+      shield: false,
+      time: 0,
+      magnet: 0,
+      nuke: 0
+    };
+
+    // UI Elements
+    const uiElements = {
+      score: document.getElementById('scoreDisplay'),
+      menu: document.getElementById('menuScreen'),
+      startBtn: document.getElementById('startBtn'),
+      icons: {
+        spread: document.getElementById('icon-spread'),
+        shield: document.getElementById('icon-shield'),
+        time: document.getElementById('icon-time'),
+        magnet: document.getElementById('icon-magnet'),
+        nuke: document.getElementById('icon-nuke')
+      }
+    };
+
+    // Keyboard Listeners
+    window.addEventListener('keydown', (e) => {
+        keys[e.code] = true;
+        if(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+            e.preventDefault();
+        }
+    });
+    window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+    // --- CLASSES ---
+
+    class Player {
+      constructor() {
+        this.x = width / 2;
+        this.y = height / 2;
+        this.radius = 12;
+        this.color = '#00f5d4';
+        this.velocity = { x: 0, y: 0 };
+      }
+      
+      update() {
+        // Smooth movement (Lerp)
+        this.x += (mouse.x - this.x) * 0.12;
+        this.y += (mouse.y - this.y) * 0.12;
+
+        // Shield visual
+        if (powerups.shield) {
+          c.save();
+          c.beginPath();
+          c.arc(this.x, this.y, this.radius + 8, 0, Math.PI * 2);
+          c.strokeStyle = `rgba(255, 215, 0, ${0.5 + Math.sin(frames * 0.1) * 0.2})`;
+          c.lineWidth = 3;
+          c.stroke();
+          c.restore();
+        }
+      }
+
+      draw() {
+        c.save();
+        c.translate(this.x, this.y);
+        
+        // Draw Player Body
+        c.beginPath();
+        c.arc(0, 0, this.radius, 0, Math.PI * 2);
+        c.fillStyle = this.color;
+        c.shadowBlur = 20;
+        c.shadowColor = this.color;
+        c.fill();
+        c.restore();
+      }
+    }
+
+    class Projectile {
+      constructor(x, y, angle, type = 'normal') {
+        this.x = x;
+        this.y = y;
+        this.speed = type === 'split' ? 8 : 12;
+        this.velocity = {
+          x: Math.cos(angle) * this.speed,
+          y: Math.sin(angle) * this.speed
+        };
+        this.radius = 4;
+        this.color = '#00f5d4';
+        this.markedForDeletion = false;
+      }
+      update(speedMult = 1) {
+        this.x += this.velocity.x * speedMult;
+        this.y += this.velocity.y * speedMult;
+        
+        if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+          this.markedForDeletion = true;
+        }
+      }
+      draw() {
+        c.beginPath();
+        c.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        c.fillStyle = this.color;
+        c.shadowBlur = 10;
+        c.shadowColor = this.color;
+        c.fill();
+      }
+    }
+
+    class Enemy {
+      constructor() {
+        this.radius = Math.random() * 10 + 15;
+        this.x = Math.random() < 0.5 ? 0 - this.radius : width + this.radius;
+        this.y = Math.random() * height;
+        
+        if (Math.random() < 0.5) {
+          this.x = Math.random() * width;
+          this.y = Math.random() < 0.5 ? 0 - this.radius : height + this.radius;
+        }
+        
+        this.color = '#ff0055';
+        const angle = Math.atan2(player.y - this.y, player.x - this.x);
+        this.velocity = {
+          x: Math.cos(angle),
+          y: Math.sin(angle)
+        };
+        this.speed = Math.random() * 1.5 + 1;
+        this.markedForDeletion = false;
+        this.spin = 0;
+      }
+      update(speedMult = 1) {
+        // Homing behavior
+        const angle = Math.atan2(player.y - this.y, player.x - this.x);
+        this.velocity.x = Math.cos(angle) * this.speed;
+        this.velocity.y = Math.sin(angle) * this.speed;
+
+        this.x += this.velocity.x * speedMult;
+        this.y += this.velocity.y * speedMult;
+        this.spin += 0.05;
+      }
+      draw() {
+        c.save();
+        c.translate(this.x, this.y);
+        c.rotate(this.spin);
+        c.fillStyle = this.color;
+        c.shadowBlur = 15;
+        c.shadowColor = this.color;
+        
+        // Draw a square for enemy
+        c.fillRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
+        
+        c.restore();
+      }
+    }
+
+    class Particle {
+      constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.velocity = {
+          x: (Math.random() - 0.5) * 8,
+          y: (Math.random() - 0.5) * 8
+        };
+        this.radius = Math.random() * 3;
+        this.color = color;
+        this.life = 1;
+        this.decay = Math.random() * 0.02 + 0.02;
+      }
+      update(speedMult = 1) {
+        this.x += this.velocity.x * speedMult;
+        this.y += this.velocity.y * speedMult;
+        this.life -= this.decay;
+      }
+      draw() {
+        c.save();
+        c.globalAlpha = this.life;
+        c.fillStyle = this.color;
+        c.beginPath();
+        c.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      }
+    }
+
+    class PowerUpItem {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 12;
+        // Random Type: 0:Spread, 1:Shield, 2:Time, 3:Magnet, 4:Nuke
+        this.type = Math.floor(Math.random() * 5);
+        this.colors = ['#00f5d4', '#ffd700', '#ffffff', '#a855f7', '#ff4444'];
+        this.names = ['TRI-BEAM', 'SHIELD', 'TIME', 'MAGNET', 'NUKE'];
+        this.markedForDeletion = false;
+        this.floatY = 0;
+      }
+      update(speedMult = 1) {
+        this.floatY = Math.sin(frames * 0.05) * 5;
+        
+        // Magnet Effect Logic
+        if (powerups.magnet > 0) {
+          const angle = Math.atan2(player.y - this.y, player.x - this.x);
+          this.x += Math.cos(angle) * 8 * speedMult;
+          this.y += Math.sin(angle) * 8 * speedMult;
+        }
+      }
+      draw() {
+        c.save();
+        c.translate(this.x, this.y + this.floatY);
+        
+        c.beginPath();
+        c.arc(0, 0, this.radius, 0, Math.PI * 2);
+        c.fillStyle = this.colors[this.type];
+        c.shadowBlur = 20;
+        c.shadowColor = this.colors[this.type];
+        c.fill();
+        
+        // Symbol
+        c.fillStyle = '#000';
+        c.font = '10px Arial';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillText(['▲', '🛡', '⏳', '◎', '☢'][this.type], 0, 1);
+        
+        c.restore();
+      }
+    }
+
+    class Background {
+      constructor() {
+        this.gridOffset = 0;
+      }
+      draw() {
+        // Vaporwave Grid
+        c.strokeStyle = 'rgba(0, 245, 212, 0.15)';
+        c.lineWidth = 1;
+        
+        // Horizontal lines moving down
+        this.gridOffset = (this.gridOffset + 2) % 50;
+        
+        c.beginPath();
+        // Vertical perspective
+        for (let i = 0; i < width; i+= 50) {
+          c.moveTo(i, 0);
+          c.lineTo(i, height);
+        }
+        // Horizontal moving
+        for (let i = this.gridOffset; i < height; i+= 50) {
+          c.moveTo(0, i);
+          c.lineTo(width, i);
+        }
+        c.stroke();
+      }
+    }
+
+    // --- GAME LOOP LOGIC ---
+
+    let player = new Player();
+    let projectiles = [];
+    let enemies = [];
+    let particles = [];
+    let powerUpItems = [];
+    let bg = new Background();
+    
+    // Screen Shake
+    let shake = 0;
+
+    function init() {
+      player = new Player();
+      projectiles = [];
+      enemies = [];
+      particles = [];
+      powerUpItems = [];
+      score = 0;
+      frames = 0;
+      shake = 0;
+      // Reset Powerups
+      powerups.spread = 0;
+      powerups.shield = false;
+      powerups.time = 0;
+      powerups.magnet = 0;
+      powerups.nuke = 0;
+      updateUI();
+    }
+
+    function spawnEnemy() {
+      // Difficulty ramping
+      let spawnRate = 100;
+      if (powerups.time > 0) spawnRate = 300; // Slower spawning during time warp
+
+      if (frames % spawnRate === 0) {
+        enemies.push(new Enemy());
+      }
+    }
+
+    function createExplosion(x, y, color) {
+      for (let i = 0; i < 12; i++) {
+        particles.push(new Particle(x, y, color));
+      }
+    }
+
+    function triggerNuke() {
+      Sound.play('nuke');
+      createExplosion(player.x, player.y, '#ff4444');
+      shake = 30; // Big shake
+      
+      enemies.forEach(enemy => {
+        createExplosion(enemy.x, enemy.y, '#ff0055');
+        enemy.markedForDeletion = true;
+        score += 20;
+      });
+      
+      // Visual Flash
+      c.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      c.fillRect(0,0,width,height);
+    }
+
+    function handleKeyboardInput() {
+        const speed = 8;
+        let moved = false;
+        if (keys['ArrowUp'] || keys['KeyW']) { mouse.y -= speed; moved = true; }
+        if (keys['ArrowDown'] || keys['KeyS']) { mouse.y += speed; moved = true; }
+        if (keys['ArrowLeft'] || keys['KeyA']) { mouse.x -= speed; moved = true; }
+        if (keys['ArrowRight'] || keys['KeyD']) { mouse.x += speed; moved = true; }
+
+        // Boundary Check
+        mouse.x = Math.max(0, Math.min(width, mouse.x));
+        mouse.y = Math.max(0, Math.min(height, mouse.y));
+    }
+
+    function animate() {
+      if (!gameRunning) return;
+      requestAnimationFrame(animate);
+      frames++;
+      
+      // Handle Keyboard Input
+      handleKeyboardInput();
+
+      // Global Time Warp Factor
+      let timeMult = (powerups.time > 0) ? 0.2 : 1;
+      
+      // Clear Screen (Fixed method)
+      c.clearRect(0, 0, width, height);
+      
+      // Shake Effect
+      c.save();
+      if (shake > 0) {
+        c.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+        shake *= 0.9;
+        if (shake < 0.5) shake = 0;
+      }
+
+      // Background Layer
+      bg.draw();
+
+      // Trail Layer (Over the background, behind entities)
+      if (powerups.time > 0) {
+        c.fillStyle = 'rgba(10, 20, 40, 0.4)'; // Blue tint for time warp
+      } else {
+        c.fillStyle = 'rgba(2, 2, 4, 0.3)'; 
+      }
+      c.fillRect(0, 0, width, height); 
+      
+      // Player
+      player.update();
+      player.draw();
+
+      // Auto Fire
+      if (frames % 10 === 0) {
+        // Main shot
+        projectiles.push(new Projectile(player.x, player.y, -Math.PI/2)); // Up
+        
+        // Tri-Beam Powerup
+        if (powerups.spread > 0) {
+          projectiles.push(new Projectile(player.x, player.y, -Math.PI/2 - 0.3)); // Left
+          projectiles.push(new Projectile(player.x, player.y, -Math.PI/2 + 0.3)); // Right
+        }
+        Sound.play('shoot');
+      }
+
+      // Projectiles
+      projectiles.forEach((p, index) => {
+        p.update(timeMult);
+        p.draw();
+        if (p.markedForDeletion) projectiles.splice(index, 1);
+      });
+
+      // Enemies
+      enemies.forEach((enemy, eIndex) => {
+        enemy.update(timeMult);
+        enemy.draw();
+
+        // Collision: Projectile vs Enemy
+        projectiles.forEach((p, pIndex) => {
+          const dist = Math.hypot(p.x - enemy.x, p.y - enemy.y);
+          if (dist - enemy.radius - p.radius < 1) {
+            createExplosion(enemy.x, enemy.y, '#ff0055');
+            Sound.play('explosion');
+            
+            // Chance to drop powerup (5%)
+            if (Math.random() < 0.05) {
+              powerUpItems.push(new PowerUpItem(enemy.x, enemy.y));
+            }
+
+            setTimeout(() => {
+              enemies.splice(eIndex, 1);
+              projectiles.splice(pIndex, 1);
+            }, 0);
+            
+            score += 10;
+          }
+        });
+
+        // Collision: Enemy vs Player
+        const distPlayer = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+        if (distPlayer - enemy.radius - player.radius < 1) {
+          if (powerups.shield) {
+            powerups.shield = false;
+            createExplosion(enemy.x, enemy.y, '#ffd700');
+            enemies.splice(eIndex, 1);
+            Sound.play('powerup'); // Shield break sound
+            shake = 10;
+          } else {
+            // Game Over
+            gameOver();
+          }
+        }
+      });
+
+      // Power Ups
+      powerUpItems.forEach((pup, index) => {
+        pup.update(timeMult);
+        pup.draw();
+
+        const dist = Math.hypot(player.x - pup.x, player.y - pup.y);
+        if (dist - pup.radius - player.radius < 1) {
+          Sound.play('powerup');
+          
+          // Apply Effect
+          if (pup.type === 0) powerups.spread = 600; // 10s @ 60fps
+          if (pup.type === 1) powerups.shield = true;
+          if (pup.type === 2) powerups.time = 300; // 5s
+          if (pup.type === 3) powerups.magnet = 600; // 10s
+          if (pup.type === 4) triggerNuke();
+          
+          powerUpItems.splice(index, 1);
+          createExplosion(pup.x, pup.y, pup.colors[pup.type]);
+        }
+      });
+
+      // Particles
+      particles.forEach((p, index) => {
+        p.update(timeMult);
+        p.draw();
+        if (p.life <= 0) particles.splice(index, 1);
+      });
+
+      spawnEnemy();
+      
+      // Decrement Timers
+      if (powerups.spread > 0) powerups.spread--;
+      if (powerups.time > 0) powerups.time--;
+      if (powerups.magnet > 0) powerups.magnet--;
+      
+      uiElements.score.innerText = score;
+      updateUI();
+
+      c.restore();
+    }
+
+    function updateUI() {
+      // Update icons opacity based on status
+      uiElements.icons.spread.style.opacity = powerups.spread > 0 ? 1 : 0.2;
+      uiElements.icons.spread.classList.toggle('pup-active', powerups.spread > 0);
+
+      uiElements.icons.shield.style.opacity = powerups.shield ? 1 : 0.2;
+      uiElements.icons.shield.classList.toggle('pup-active', powerups.shield);
+
+      uiElements.icons.time.style.opacity = powerups.time > 0 ? 1 : 0.2;
+      uiElements.icons.time.classList.toggle('pup-active', powerups.time > 0);
+
+      uiElements.icons.magnet.style.opacity = powerups.magnet > 0 ? 1 : 0.2;
+      uiElements.icons.magnet.classList.toggle('pup-active', powerups.magnet > 0);
+
+      // Nuke is instant, so usually inactive unless just triggered (handled in sound)
+      uiElements.icons.nuke.style.opacity = 0.2;
+    }
+
+    function gameOver() {
+      gameRunning = false;
+      Sound.play('explosion');
+      uiElements.menu.style.opacity = '1';
+      uiElements.menu.style.pointerEvents = 'auto';
+      uiElements.startBtn.innerHTML = '<span class="relative z-10">RETRY</span>';
+    }
+
+    // Mouse Listeners (Kept for compatibility)
+    window.addEventListener('mousemove', (e) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+    });
+
+    uiElements.startBtn.addEventListener('click', () => {
+      init();
+      gameRunning = true;
+      uiElements.menu.style.opacity = '0';
+      uiElements.menu.style.pointerEvents = 'none';
+      animate();
+    });
+
+  </script>
+</body>
+</html>
